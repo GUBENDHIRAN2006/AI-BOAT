@@ -1,6 +1,0 @@
-flask
-opencv-python-headless
-psycopg2-binary
-ultralytics
-numpy
-gunicorn
