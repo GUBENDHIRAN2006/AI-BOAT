@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>OceanScan — AI Boat Waste Detection</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+<style>
+:root{
+  --deep:#060e1a;--surface:#0f1e35;--surface2:#162844;--border:#1e3a5f;
+  --teal:#00d4aa;--teal2:#00a882;--blue:#1e90ff;--amber:#f5a623;--red:#ff4757;--green:#2ed573;
+  --text:#e8f4f8;--muted:#6b8fa8;
+  --mono:'DM Mono',monospace;--display:'Syne',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--deep);color:var(--text);font-family:var(--display);min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(rgba(0,212,170,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,170,.025) 1px,transparent 1px);
+  background-size:40px 40px}
+nav{position:sticky;top:0;z-index:1000;background:rgba(6,14,26,.96);backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;height:60px}
+.nav-logo{font-size:17px;font-weight:800;color:var(--teal);letter-spacing:-.5px;margin-right:36px;display:flex;align-items:center;gap:8px}
+.nav-btn{height:60px;padding:0 18px;background:none;border:none;border-bottom:2px solid transparent;
+  color:var(--muted);font-family:var(--display);font-size:13px;font-weight:600;cursor:pointer;transition:all .2s}
+.nav-btn:hover{color:var(--text)} .nav-btn.active{color:var(--teal);border-bottom-color:var(--teal)}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.pulse-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);transition:all .3s}
+.pulse-dot.navigating{background:var(--blue);box-shadow:0 0 0 3px rgba(30,144,255,.25);animation:pd 1.2s infinite}
+.pulse-dot.active{background:var(--teal);box-shadow:0 0 0 3px rgba(0,212,170,.2);animation:pd 1.5s infinite}
+.pulse-dot.alert{background:var(--red);box-shadow:0 0 0 3px rgba(255,71,87,.25);animation:pd .8s infinite}
+@keyframes pd{0%,100%{opacity:1}50%{opacity:.4}}
+.page{display:none;padding:22px 24px;position:relative;z-index:1;animation:fi .3s ease}
+.page.active{display:block}
+@keyframes fi{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.sec-label{font-family:var(--mono);font-size:11px;font-weight:500;color:var(--teal);letter-spacing:2px;text-transform:uppercase;margin-bottom:5px}
+.sec-title{font-size:21px;font-weight:800;color:var(--text);margin-bottom:18px;letter-spacing:-.5px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(0,212,170,.25),transparent)}
+.card-title{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px}
+.metric{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px}
+.metric-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:5px}
+.metric-value{font-size:38px;font-weight:800;line-height:1;color:var(--teal);letter-spacing:-2px}
+.metric-unit{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:3px}
+.prog-wrap{margin-top:10px;background:var(--surface2);border-radius:4px;height:4px;overflow:hidden}
+.prog-bar{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--teal),var(--teal2));transition:width .5s ease}
+.prog-bar.danger{background:linear-gradient(90deg,var(--amber),var(--red))}
+.sbadge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-family:var(--mono);font-size:11px;font-weight:500;border:1px solid var(--border);transition:all .3s}
+.sbadge.docked{background:rgba(107,143,168,.1);border-color:var(--muted);color:var(--muted)}
+.sbadge.navigating{background:rgba(30,144,255,.1);border-color:var(--blue);color:var(--blue)}
+.sbadge.arrived{background:rgba(245,166,35,.1);border-color:var(--amber);color:var(--amber)}
+.sbadge.collecting,.sbadge.coverage{background:rgba(0,212,170,.1);border-color:var(--teal);color:var(--teal)}
+.sbadge.returning_home{background:rgba(245,166,35,.1);border-color:var(--amber);color:var(--amber)}
+.sbadge.max_reached{background:rgba(255,71,87,.1);border-color:var(--red);color:var(--red)}
+#dashMap{height:420px;border-radius:12px;border:1px solid var(--border)}
+#simTopMap{height:100%;min-height:460px;border-radius:0;border:none}
+#recordMap{height:420px;border-radius:12px;border:1px solid var(--border)}
+.inp-group{margin-bottom:14px}
+.inp-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px;display:block}
+.inp-field{width:100%;padding:9px 13px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:13px;outline:none;transition:border-color .2s}
+.inp-field:focus{border-color:var(--teal)}
+.radio-group{display:flex;gap:8px;flex-wrap:wrap}
+.radio-opt{display:flex;align-items:center;gap:7px;padding:7px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-family:var(--mono);font-size:12px;transition:all .2s;user-select:none}
+.radio-opt input{display:none}
+.radio-opt:has(input:checked){border-color:var(--teal);color:var(--teal);background:rgba(0,212,170,.08)}
+.btn{padding:9px 20px;border-radius:8px;font-family:var(--display);font-size:12px;font-weight:700;border:none;cursor:pointer;transition:all .2s;letter-spacing:.3px}
+.btn-primary{background:var(--teal);color:var(--deep)} .btn-primary:hover{background:var(--teal2);transform:translateY(-1px)}
+.btn-nav{background:var(--blue);color:#fff} .btn-nav:hover{background:#1676d2;transform:translateY(-1px)}
+.btn-coverage{background:var(--green);color:#060e1a} .btn-coverage:hover{background:#25c065;transform:translateY(-1px)}
+.btn-danger{background:transparent;color:var(--red);border:1px solid var(--red)} .btn-danger:hover{background:rgba(255,71,87,.1)}
+.btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border)} .btn-ghost:hover{color:var(--text);border-color:var(--text)}
+.btn-amber{background:var(--amber);color:#060e1a} .btn-amber:hover{background:#e09510;transform:translateY(-1px)}
+.btn-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.file-drop{border:2px dashed var(--border);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:all .2s;color:var(--muted);font-family:var(--mono);font-size:12px}
+.file-drop:hover{border-color:var(--teal);color:var(--teal)}
+.file-drop input{display:none}
+.alert-box{padding:11px 15px;border-radius:8px;margin-bottom:14px;font-family:var(--mono);font-size:12px;display:none}
+.alert-box.info{background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.3);color:var(--teal)}
+.alert-box.warn{background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.3);color:var(--amber)}
+.alert-box.error{background:rgba(255,71,87,.1);border:1px solid rgba(255,71,87,.3);color:var(--red)}
+.alert-box.nav-alert{background:rgba(30,144,255,.1);border:1px solid rgba(30,144,255,.3);color:var(--blue)}
+.alert-box.show{display:block}
+/* ARRIVAL MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(8px);z-index:9999;display:none;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal-box{background:var(--surface);border:1px solid var(--teal);border-radius:16px;padding:32px;text-align:center;max-width:440px;width:90%;animation:pop .4s cubic-bezier(.34,1.56,.64,1)}
+@keyframes pop{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:scale(1)}}
+.modal-icon{font-size:52px;margin-bottom:14px;animation:bob 1s infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.modal-title{font-size:22px;font-weight:800;color:var(--teal);margin-bottom:6px}
+.modal-sub{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:18px}
+.modal-coords{font-family:var(--mono);font-size:12px;color:var(--text);background:var(--surface2);border-radius:8px;padding:9px 14px;margin-bottom:18px}
+/* MAX LOAD MODAL */
+.maxload-modal{border-color:var(--red) !important}
+.maxload-modal .modal-title{color:var(--red)}
+/* SIM LAYOUT */
+.sim-layout{display:grid;grid-template-columns:1fr 420px;gap:0;height:calc(100vh - 60px - 180px);min-height:580px}
+.sim-map-panel{position:relative;overflow:hidden;border:1px solid var(--border);border-radius:12px 0 0 12px;background:var(--deep)}
+.sim-right{display:flex;flex-direction:column;border:1px solid var(--border);border-left:none;border-radius:0 12px 12px 0;overflow:hidden}
+.sim-cam-panel{flex:1;background:var(--deep);border-bottom:1px solid var(--border);position:relative;min-height:220px;display:flex;flex-direction:column}
+.sim-cam-header{padding:9px 14px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.sim-cam-header .cam-title{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase}
+.sim-cam-body{flex:1;position:relative;display:flex;align-items:center;justify-content:center;background:var(--deep);overflow:hidden}
+.sim-cam-body img{width:100%;height:100%;object-fit:contain;display:none;position:absolute;inset:0}
+.sim-cam-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--muted);font-family:var(--mono);font-size:11px;padding:20px;text-align:center}
+#boatCanvas3d{width:100%;display:block;background:var(--deep);border-top:1px solid var(--border)}
+.sim-info{padding:12px 14px;background:var(--surface);flex-shrink:0}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.info-chip{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-family:var(--mono);font-size:10px;color:var(--muted)}
+.info-chip b{color:var(--teal);font-size:12px;display:block}
+.info-chip span{font-size:9px;letter-spacing:.8px;text-transform:uppercase}
+.map-hud{position:absolute;z-index:500;pointer-events:none}
+.map-hud-tl{top:12px;left:12px} .map-hud-tr{top:12px;right:12px} .map-hud-bl{bottom:12px;left:12px}
+.hud-chip{background:rgba(6,14,26,.88);border:1px solid rgba(0,212,170,.3);border-radius:8px;padding:7px 12px;font-family:var(--mono);font-size:11px;color:var(--teal);backdrop-filter:blur(6px);margin-bottom:5px;pointer-events:all}
+.hud-title{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+.scan-line{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--teal),transparent);opacity:.5;animation:sl 2s linear infinite;pointer-events:none}
+@keyframes sl{0%{top:0}100%{top:100%}}
+.zoom-badge{position:absolute;bottom:50px;right:10px;z-index:600;background:rgba(6,14,26,.85);border:1px solid rgba(0,212,170,.3);border-radius:6px;padding:5px 10px;font-family:var(--mono);font-size:10px;color:var(--teal)}
+.nav-log{padding:0 14px 10px;max-height:80px;overflow-y:auto;flex-shrink:0}
+.log-line{font-family:var(--mono);font-size:10px;color:var(--muted);line-height:1.9;border-bottom:1px solid rgba(30,58,95,.3)}
+.log-line.new{color:var(--teal)}
+.coord-pill{display:inline-flex;gap:14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 13px;font-family:var(--mono);font-size:11px;color:var(--teal);flex-wrap:wrap}
+.dtable{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px}
+.dtable th{text-align:left;padding:9px 13px;border-bottom:1px solid var(--border);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-weight:500}
+.dtable td{padding:11px 13px;border-bottom:1px solid rgba(30,58,95,.5)}
+.dtable tr:hover td{background:rgba(0,212,170,.04)}
+.view-btn{padding:5px 11px;border-radius:6px;background:transparent;border:1px solid var(--teal);color:var(--teal);font-family:var(--mono);font-size:11px;cursor:pointer;transition:all .2s}
+.view-btn:hover{background:rgba(0,212,170,.1)}
+.empty-state{text-align:center;padding:50px 20px;color:var(--muted);font-family:var(--mono);font-size:13px}
+.empty-state .ico{font-size:44px;margin-bottom:10px;opacity:.4}
+/* HOME LOCATION STEP */
+.step-box{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px;display:flex;align-items:center;gap:14px}
+.step-num{width:32px;height:32px;border-radius:50%;background:var(--teal);color:var(--deep);font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.step-num.done{background:var(--green)}
+.step-num.pending{background:var(--border);color:var(--muted)}
+/* SETTINGS PAGE */
+.settings-section{margin-bottom:28px}
+.settings-section h3{font-family:var(--mono);font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:var(--teal);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.audio-status-box{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 18px;font-family:var(--mono);font-size:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.audio-preview{margin-top:10px}
+/* RED ALERT BLINK */
+@keyframes redBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(255,71,87,0)}50%{opacity:.3;box-shadow:0 0 12px 4px rgba(255,71,87,.6)}}
+.alert-blink{animation:redBlink .5s infinite}
+@media(max-width:900px){.sim-layout{grid-template-columns:1fr;height:auto}.sim-right{border-left:1px solid var(--border);border-radius:12px;margin-top:12px}.g2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- ARRIVAL MODAL -->
+<div class="modal-overlay" id="arrivalModal">
+  <div class="modal-box">
+    <div class="modal-icon">⚓</div>
+    <div class="modal-title">Destination Reached!</div>
+    <div class="modal-sub">Boat has arrived at survey location</div>
+    <div class="modal-coords" id="modalCoords">—</div>
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+      <button class="btn btn-coverage" onclick="onArrivalStartCoverage()">🗺 Start Coverage Sweep</button>
+      <button class="btn btn-primary" onclick="onArrivalStartDetection()">▶ Detection Only</button>
+      <button class="btn btn-ghost" onclick="closeArrivalModal()">Later</button>
+    </div>
+  </div>
+</div>
+
+<!-- MAX LOAD MODAL -->
+<div class="modal-overlay" id="maxLoadModal">
+  <div class="modal-box maxload-modal">
+    <div class="modal-icon" style="animation:none">🚨</div>
+    <div class="modal-title">MAX LOAD REACHED</div>
+    <div class="modal-sub">Boat has collected maximum waste capacity</div>
+    <div class="modal-coords" id="maxLoadInfo">Boat is returning to home port automatically</div>
+    <div style="margin-top:16px">
+      <button class="btn btn-danger" onclick="closeMaxLoadModal()">Acknowledge</button>
+    </div>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">⛵ OceanScan</div>
+  <button class="nav-btn active" onclick="showPage('dashboard',this)">Dashboard</button>
+  <button class="nav-btn" onclick="showPage('simulation',this)">Boat Simulation</button>
+  <button class="nav-btn" onclick="showPage('records',this)">Records</button>
+  <button class="nav-btn" onclick="showPage('settings',this)">⚙ Settings</button>
+  <div class="nav-right">
+    <div class="pulse-dot" id="navDot"></div>
+    <span id="navStatusText" style="font-family:var(--mono);font-size:11px;color:var(--muted)">Docked</span>
+  </div>
+</nav>
+
+<!-- ============ DASHBOARD ============ -->
+<div id="page-dashboard" class="page active">
+  <div class="sec-label">Mission Setup</div>
+  <div class="sec-title">AI Boat Waste Detection Dashboard</div>
+
+  <!-- STEP 1: HOME LOCATION -->
+  <div class="step-box" id="step1Box">
+    <div class="step-num" id="step1Num">1</div>
+    <div>
+      <div style="font-weight:700;font-size:14px;margin-bottom:3px">Set Home Port Location</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--muted)">Click anywhere on the map below to place your home port (where the boat starts)</div>
+    </div>
+    <div id="step1Status" style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-left:auto">Not set</div>
+  </div>
+
+  <!-- STEP 2: SURVEY AREA -->
+  <div class="step-box" id="step2Box">
+    <div class="step-num pending" id="step2Num">2</div>
+    <div>
+      <div style="font-weight:700;font-size:14px;margin-bottom:3px">Draw Survey Area</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--muted)">Use the circle tool to draw the survey zone</div>
+    </div>
+    <div id="step2Status" style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-left:auto">Not drawn</div>
+  </div>
+
+  <div class="g2" style="margin-bottom:18px">
+    <!-- MAP -->
+    <div>
+      <div class="card-title" style="margin-bottom:8px">🗺 Click = Home Port &nbsp;|&nbsp; Circle Tool = Survey Area</div>
+      <div id="dashMap"></div>
+      <div id="coordDisplay" style="margin-top:10px;display:none">
+        <div class="coord-pill">
+          <span>HOME: <b id="dispHome">—</b></span>
+          <span>TARGET: <b id="dispTarget">—</b></span>
+          <span>RADIUS: <b id="dispRad">—</b> m</span>
+        </div>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-nav" id="navigateBtn" onclick="sendBoatToLocation()" style="display:none">🚢 Deploy Boat</button>
+      </div>
+    </div>
+
+    <!-- CONTROLS -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card">
+        <div class="card-title">Camera Source</div>
+        <div class="radio-group" style="margin-bottom:12px">
+          <label class="radio-opt"><input type="radio" name="cam" value="webcam" checked onchange="updateCameraUI()"> Webcam</label>
+          <label class="radio-opt"><input type="radio" name="cam" value="ip" onchange="updateCameraUI()"> IP Camera</label>
+          <label class="radio-opt"><input type="radio" name="cam" value="video" onchange="updateCameraUI()"> Upload Video</label>
+        </div>
+        <div id="ipInput" class="inp-group" style="display:none">
+          <label class="inp-label">Camera URL</label>
+          <input class="inp-field" id="cameraUrl" value="http://192.168.1.100:8080/video" placeholder="rtsp:// or http://...">
+        </div>
+        <div id="videoUpload" style="display:none">
+          <label class="file-drop">
+            <input type="file" id="videoFile" accept=".mp4,.avi,.mov" onchange="fileSelected(this)">
+            <div style="font-size:26px;margin-bottom:6px">📁</div>
+            <div id="fileLabel">Drop video or click to browse</div>
+          </label>
+        </div>
+      </div>
+
+      <div class="g2" style="gap:10px">
+        <div class="metric">
+          <div class="metric-label">Waste Count</div>
+          <div class="metric-value" id="wasteCount">0</div>
+          <div class="metric-unit">items detected</div>
+          <div class="prog-wrap"><div class="prog-bar" id="countProg" style="width:0%"></div></div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Est. Weight</div>
+          <div class="metric-value" id="wasteWeight">0</div>
+          <div class="metric-unit">kilograms</div>
+          <div class="prog-wrap"><div class="prog-bar" id="weightProg" style="width:0%"></div></div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div class="sbadge docked" id="dashStatusBadge"><span>⬤</span><span id="dashStatusLabel">Docked</span></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="startDetection()">▶ Start Detection</button>
+        <button class="btn btn-danger" onclick="stopDetection()">■ Stop</button>
+        <button class="btn btn-ghost" onclick="returnHome()">⬅ Return Home</button>
+      </div>
+    </div>
+  </div>
+  <div class="alert-box" id="alertBox"></div>
+</div>
+
+<!-- ============ SIMULATION ============ -->
+<div id="page-simulation" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+    <div>
+      <div class="sec-label">Navigation & Detection</div>
+      <div class="sec-title" style="margin-bottom:0">Boat Simulation Control Center</div>
+    </div>
+    <div class="btn-row">
+      <div class="sbadge docked" id="simStatusBadge"><span>⬤</span><span id="simStatusLabel">Docked</span></div>
+      <button class="btn btn-coverage" id="btnStartCoverage" onclick="startCoverage()" style="display:none">🗺 Start Coverage</button>
+      <button class="btn btn-primary" onclick="startDetectionFromSim()">▶ Start Detection</button>
+      <button class="btn btn-danger" onclick="stopDetection()">■ Stop</button>
+      <button class="btn btn-ghost" onclick="returnHome()">⬅ Return Home</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+      <div class="card-title" style="margin-bottom:0">Camera Source:</div>
+      <div class="radio-group">
+        <label class="radio-opt"><input type="radio" name="simcam" value="webcam" checked onchange="updateSimCameraUI()"> Webcam</label>
+        <label class="radio-opt"><input type="radio" name="simcam" value="ip" onchange="updateSimCameraUI()"> IP Camera</label>
+        <label class="radio-opt"><input type="radio" name="simcam" value="video" onchange="updateSimCameraUI()"> Upload Video</label>
+      </div>
+      <div id="simIpInput" style="display:none">
+        <input class="inp-field" id="simCameraUrl" value="http://192.168.1.100:8080/video" style="width:240px">
+      </div>
+      <div id="simVideoUpload" style="display:none">
+        <label class="file-drop" style="padding:8px 16px;display:inline-flex;align-items:center;gap:8px">
+          <input type="file" id="simVideoFile" accept=".mp4,.avi,.mov" onchange="simFileSelected(this)">
+          <span>📁</span><span id="simFileLabel">Browse video...</span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div class="sim-layout">
+    <!-- MAP -->
+    <div class="sim-map-panel">
+      <div id="simTopMap"></div>
+      <div class="map-hud map-hud-tl">
+        <div class="hud-chip"><div class="hud-title">Position</div><div id="hudPos">—</div></div>
+        <div class="hud-chip"><div class="hud-title">Heading</div><div id="hudHeading">0°</div></div>
+        <div class="hud-chip"><div class="hud-title">Coverage</div><div id="hudCoverage">0%</div></div>
+      </div>
+      <div class="map-hud map-hud-tr">
+        <div class="hud-chip"><div class="hud-title">Waste Count</div><div id="hudWaste" style="font-size:18px;font-weight:800;color:var(--teal)">0</div></div>
+        <div class="hud-chip"><div class="hud-title">Weight</div><div id="hudWeight" style="font-size:16px;font-weight:700;color:var(--teal)">0 kg</div></div>
+      </div>
+      <div class="map-hud map-hud-bl">
+        <div class="hud-chip" style="font-size:10px;color:var(--muted)">🏠 Home &nbsp;🎯 Target &nbsp;🟢 Path</div>
+      </div>
+      <div class="zoom-badge" id="zoomBadge">ZOOM: 15</div>
+    </div>
+
+    <!-- RIGHT -->
+    <div class="sim-right">
+      <!-- FRONT CAMERA -->
+      <div class="sim-cam-panel">
+        <div class="sim-cam-header">
+          <span class="cam-title">🎥 Boat Front Camera — Live Feed</span>
+          <div class="sbadge docked" id="camStatusBadge" style="font-size:10px;padding:3px 9px"><span>⬤</span><span id="camStatusLabel">Offline</span></div>
+        </div>
+        <div class="sim-cam-body" id="simCamBody">
+          <img id="simCamImg" alt="front cam">
+          <div class="sim-cam-placeholder" id="simCamPlaceholder">
+            <div style="font-size:36px;opacity:.3">📷</div>
+            <div>Front camera offline</div>
+            <div style="font-size:10px;margin-top:4px;color:var(--border)">Start detection to activate</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BOAT SIDE VIEW CANVAS -->
+      <div style="flex-shrink:0">
+        <div style="padding:7px 14px;background:var(--surface);border-bottom:1px solid var(--border);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase">⛵ Boat Side View</span>
+          <span id="boatAlertLabel" style="font-family:var(--mono);font-size:10px;color:var(--red);display:none">🔴 ALERT</span>
+        </div>
+        <canvas id="boatCanvas3d" width="420" height="150"></canvas>
+      </div>
+
+      <!-- INFO -->
+      <div class="sim-info">
+        <div class="info-grid">
+          <div class="info-chip"><span>Status</span><b id="simInfoStatus">DOCKED</b></div>
+          <div class="info-chip"><span>Speed</span><b id="simInfoSpeed">0 kn</b></div>
+          <div class="info-chip"><span>Waypoint</span><b id="simInfoWp">—</b></div>
+          <div class="info-chip"><span>Coverage</span><b id="simInfoCov">0%</b></div>
+        </div>
+        <div class="prog-wrap" style="margin-bottom:5px"><div class="prog-bar" id="simCovProg" style="width:0%"></div></div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:8px">Coverage: <span id="simCovPct">0</span>%</div>
+        <div class="nav-log" id="navLog"><div class="log-line">System ready.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ RECORDS ============ -->
+<div id="page-records" class="page">
+  <div id="recordsTable">
+    <div class="sec-label">Data Log</div>
+    <div class="sec-title">Waste Collection Records</div>
+    <div id="recordsContent"><div class="empty-state"><div class="ico">📋</div>Loading...</div></div>
+  </div>
+  <div id="recordDetail" style="display:none">
+    <div style="margin-bottom:18px"><button class="btn btn-ghost" onclick="showRecordsTable()">← Back</button></div>
+    <div class="sec-label">Location Detail</div>
+    <div class="sec-title" id="recordDetailTitle">Record</div>
+    <div id="recordMap"></div>
+    <div style="margin-top:14px" id="recordDetailInfo"></div>
+  </div>
+</div>
+
+<!-- ============ SETTINGS ============ -->
+<div id="page-settings" class="page">
+  <div class="sec-label">Configuration</div>
+  <div class="sec-title">Settings</div>
+
+  <div style="max-width:680px">
+
+    <!-- AUDIO ALERT SECTION -->
+    <div class="settings-section">
+      <h3>🔔 Max Load Alert Audio</h3>
+      <p style="font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.7">
+        Upload a custom audio file to play automatically when the boat reaches maximum waste capacity.
+        Supports MP3, WAV, OGG, M4A formats.
+      </p>
+
+      <!-- Current audio status -->
+      <div class="audio-status-box" id="audioStatusBox">
+        <div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:3px">Current Alert Audio</div>
+          <div id="currentAudioName" style="color:var(--teal);font-weight:600">No audio uploaded</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-ghost" id="testAudioBtn" onclick="testAudio()" style="display:none">▶ Test</button>
+          <button class="btn btn-danger" id="removeAudioBtn" onclick="removeAudioInfo()" style="display:none;font-size:11px;padding:6px 12px">✕ Remove</button>
+        </div>
+      </div>
+
+      <!-- Audio preview -->
+      <div class="audio-preview" id="audioPreviewWrap" style="display:none">
+        <audio id="audioPreview" controls style="width:100%;margin-top:8px;filter:invert(1) hue-rotate(170deg)"></audio>
+      </div>
+
+      <!-- Upload -->
+      <div style="margin-top:16px">
+        <label class="file-drop" id="audioDropZone">
+          <input type="file" id="audioFile" accept=".mp3,.wav,.ogg,.m4a" onchange="uploadAudio(this)">
+          <div style="font-size:28px;margin-bottom:8px">🔊</div>
+          <div id="audioDropLabel">Drop audio file here or click to upload</div>
+          <div style="font-size:10px;margin-top:4px;color:var(--muted)">MP3 · WAV · OGG · M4A</div>
+        </label>
+      </div>
+
+      <div class="alert-box" id="audioAlertBox" style="margin-top:12px"></div>
+    </div>
+
+    <!-- DETECTION SETTINGS -->
+    <div class="settings-section">
+      <h3>🎯 Detection Settings</h3>
+      <div class="card">
+        <div class="inp-group">
+          <label class="inp-label">Max Waste Count (triggers return home)</label>
+          <input class="inp-field" id="maxWasteInput" type="number" value="50" min="1" max="999">
+        </div>
+        <div class="inp-group">
+          <label class="inp-label">Weight per Item (kg)</label>
+          <input class="inp-field" id="weightPerItemInput" type="number" value="0.02" step="0.01" min="0.001">
+        </div>
+        <div style="color:var(--muted);font-family:var(--mono);font-size:11px;margin-top:6px">
+          Note: Changes apply to next detection session. Saved locally in browser.
+        </div>
+      </div>
+    </div>
+
+    <!-- BOAT SETTINGS -->
+    <div class="settings-section">
+      <h3>⛵ Boat Settings</h3>
+      <div class="card">
+        <div class="inp-group">
+          <label class="inp-label">Simulation Speed</label>
+          <div class="radio-group">
+            <label class="radio-opt"><input type="radio" name="boatSpeed" value="slow"> Slow</label>
+            <label class="radio-opt"><input type="radio" name="boatSpeed" value="normal" checked> Normal</label>
+            <label class="radio-opt"><input type="radio" name="boatSpeed" value="fast"> Fast</label>
+          </div>
+        </div>
+        <div class="inp-group" style="margin-bottom:0">
+          <label class="inp-label">Coverage Lane Spacing</label>
+          <div class="radio-group">
+            <label class="radio-opt"><input type="radio" name="laneSpacing" value="dense"> Dense (10m)</label>
+            <label class="radio-opt"><input type="radio" name="laneSpacing" value="normal" checked> Normal (15m)</label>
+            <label class="radio-opt"><input type="radio" name="laneSpacing" value="wide"> Wide (25m)</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- HIDDEN AUDIO ELEMENT FOR ALERTS -->
+<audio id="alertAudio" style="display:none"></audio>
+
+<script>
+// ========================
+// GLOBALS
+// ========================
+let selLat = null, selLon = null, selRadius = null;
+let homeLat = null, homeLon = null;
+let homeSet = false, surveySet = false;
+let lastBoatSt = '', lastHeading = 0, lastBoatStatus = 'docked';
+let isDetecting = false;
+let maxReachedAlerted = false;
+let alertAudioSrc = null;
+let homeMarker = null, targetMarker = null, trailPoly = null, coveragePathPoly = null, surveyCircle = null;
+let boatMarker = null;
+let coveragePathDrawn = false;
+let boatFrame = 0, waveOff = 0;
+let isAlertBlinking = false;
+
+// ========================
+// PAGE NAV
+// ========================
+function showPage(name, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  if (btn) btn.classList.add('active');
+  if (name === 'records') loadRecords();
+  if (name === 'simulation') setTimeout(() => { if (simTopMap) simTopMap.invalidateSize(); }, 150);
+  if (name === 'settings') loadAudioStatus();
+}
+
+// ========================
+// DASHBOARD MAP
+// ========================
+const dashMap = L.map('dashMap').setView([10.7905, 78.7047], 13);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 19
+}).addTo(dashMap);
+
+const drawnItems = new L.FeatureGroup().addTo(dashMap);
+const drawCtrl = new L.Control.Draw({
+  edit: { featureGroup: drawnItems },
+  draw: { circle: true, polygon: false, rectangle: false, polyline: false, marker: false, circlemarker: false }
+});
+dashMap.addControl(drawCtrl);
+
+// Home port marker on dashboard map
+let dashHomeMarker = null;
+const homeIconDiv = L.divIcon({ html: '<div style="font-size:24px;filter:drop-shadow(0 0 6px rgba(245,166,35,.9))">🏠</div>', className: '', iconSize: [28, 28], iconAnchor: [14, 14] });
+
+// Click on map = set home location
+dashMap.on('click', function(e) {
+  if (homeSet && surveySet) return; // both done, ignore
+  if (homeSet) return; // only allow home setting once until reset
+  homeLat = e.latlng.lat;
+  homeLon = e.latlng.lng;
+  homeSet = true;
+
+  if (dashHomeMarker) dashMap.removeLayer(dashHomeMarker);
+  dashHomeMarker = L.marker([homeLat, homeLon], { icon: homeIconDiv }).bindTooltip('🏠 Home Port').addTo(dashMap);
+
+  fetch('/api/set_home', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ latitude: homeLat, longitude: homeLon })
+  });
+
+  document.getElementById('step1Num').classList.remove('pending');
+  document.getElementById('step1Num').classList.add('done');
+  document.getElementById('step1Num').textContent = '✓';
+  document.getElementById('step1Status').textContent = `${homeLat.toFixed(4)}, ${homeLon.toFixed(4)}`;
+  document.getElementById('step1Status').style.color = 'var(--green)';
+  document.getElementById('step2Num').classList.remove('pending');
+  document.getElementById('step2Num').textContent = '2';
+  showAlert('✅ Home port set — now draw a circle for survey area', 'info');
+});
+
+dashMap.on(L.Draw.Event.CREATED, function(e) {
+  if (!homeSet) { showAlert('⚠ Set home port first by clicking on the map', 'warn'); return; }
+  drawnItems.clearLayers();
+  drawnItems.addLayer(e.layer);
+  const ll = e.layer.getLatLng();
+  selLat = ll.lat; selLon = ll.lng;
+  selRadius = e.layer.getRadius ? e.layer.getRadius() : 100;
+  surveySet = true;
+
+  document.getElementById('step2Num').classList.add('done');
+  document.getElementById('step2Num').textContent = '✓';
+  document.getElementById('step2Status').textContent = `R=${Math.round(selRadius)}m`;
+  document.getElementById('step2Status').style.color = 'var(--green)';
+  document.getElementById('coordDisplay').style.display = 'block';
+  document.getElementById('dispHome').textContent = `${homeLat.toFixed(4)}, ${homeLon.toFixed(4)}`;
+  document.getElementById('dispTarget').textContent = `${selLat.toFixed(4)}, ${selLon.toFixed(4)}`;
+  document.getElementById('dispRad').textContent = Math.round(selRadius);
+  document.getElementById('navigateBtn').style.display = 'inline-flex';
+  fetch('/api/set_location', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ latitude: selLat, longitude: selLon, radius: selRadius })
+  });
+  showAlert(`Survey area drawn — click Deploy Boat to begin`, 'info');
+});
+
+// ========================
+// SIMULATION MAP
+// ========================
+const simTopMap = L.map('simTopMap', { zoomControl: true }).setView([10.7905, 78.7047], 15);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 20
+}).addTo(simTopMap);
+simTopMap.on('zoomend', () => { document.getElementById('zoomBadge').textContent = 'ZOOM: ' + simTopMap.getZoom(); });
+
+function makeBoatIcon(heading, alertMode) {
+  const glow = alertMode ? 'rgba(255,71,87,0.9)' : 'rgba(0,212,170,0.9)';
+  const glow2 = alertMode ? 'rgba(255,71,87,0.4)' : 'rgba(0,212,170,0.4)';
+  const fill = alertMode ? '#ff4757' : '#00d4aa';
+  return L.divIcon({
+    html: `<div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;
+      transform:rotate(${heading}deg);transform-origin:center;
+      filter:drop-shadow(0 0 8px ${glow}) drop-shadow(0 0 16px ${glow2})">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+        <ellipse cx="14" cy="16" rx="7" ry="10" fill="#1e3a5f" stroke="${fill}" stroke-width="1.5"/>
+        <polygon points="14,3 9,16 19,16" fill="${fill}" opacity="0.9"/>
+        <circle cx="14" cy="14" r="2.5" fill="${fill}"/>
+        <line x1="14" y1="3" x2="14" y2="1" stroke="${fill}" stroke-width="1.5"/>
+      </svg></div>`,
+    className: '', iconSize: [32, 32], iconAnchor: [16, 16]
+  });
+}
+
+const homeIconSvg = L.divIcon({ html: '<div style="font-size:22px;filter:drop-shadow(0 0 5px rgba(245,166,35,.8))">🏠</div>', className: '', iconSize: [24, 24], iconAnchor: [12, 12] });
+const targetIconSvg = L.divIcon({ html: '<div style="font-size:22px;filter:drop-shadow(0 0 5px rgba(255,71,87,.8))">🎯</div>', className: '', iconSize: [24, 24], iconAnchor: [12, 24] });
+
+boatMarker = L.marker([10.7905, 78.7047], { icon: makeBoatIcon(0, false), zIndexOffset: 1000 }).addTo(simTopMap);
+
+// ========================
+// BOAT CANVAS DRAW
+// ========================
+const bc = document.getElementById('boatCanvas3d');
+const bctx = bc.getContext('2d');
+
+function drawBoatSide(status, heading, wcount, maxw, alertMode) {
+  const W = bc.width, H = bc.height;
+  bctx.clearRect(0, 0, W, H);
+
+  // Sky
+  const sky = bctx.createLinearGradient(0, 0, 0, H * 0.5);
+  sky.addColorStop(0, '#060e1a'); sky.addColorStop(1, '#0a1e3a');
+  bctx.fillStyle = sky; bctx.fillRect(0, 0, W, H * 0.5);
+
+  // Stars
+  bctx.fillStyle = 'rgba(255,255,255,0.5)';
+  [[25,10],[70,6],[120,14],[200,8],[300,16],[380,6],[415,14]].forEach(([sx,sy])=>{
+    bctx.beginPath(); bctx.arc(sx,sy,1,0,Math.PI*2); bctx.fill();
+  });
+
+  // Water
+  waveOff += 0.04;
+  const water = bctx.createLinearGradient(0, H*0.5, 0, H);
+  water.addColorStop(0,'#0d2d4a'); water.addColorStop(1,'#060e1a');
+  bctx.fillStyle = water; bctx.fillRect(0,H*0.5,W,H*0.5);
+
+  for (let w=0;w<3;w++) {
+    bctx.strokeStyle=`rgba(0,212,170,${0.1-w*0.03})`; bctx.lineWidth=1.5;
+    bctx.beginPath();
+    for(let x=0;x<=W;x+=3){
+      const y=H*0.54+w*12+Math.sin((x/50)+waveOff+w*0.8)*3.5;
+      x===0?bctx.moveTo(x,y):bctx.lineTo(x,y);
+    }
+    bctx.stroke();
+  }
+
+  const cx=W/2, cy=H*0.44, bob=Math.sin(boatFrame*0.06)*2;
+
+  // Wake
+  if(['navigating','returning_home','coverage'].includes(status)){
+    const wg=bctx.createLinearGradient(cx,cy+bob,cx,cy+35+bob);
+    wg.addColorStop(0,'rgba(0,212,170,0.5)'); wg.addColorStop(1,'rgba(0,212,170,0)');
+    bctx.strokeStyle=wg; bctx.lineWidth=2.5;
+    bctx.beginPath(); bctx.moveTo(cx-16,cy+10+bob); bctx.lineTo(cx-35,cy+36+bob); bctx.stroke();
+    bctx.beginPath(); bctx.moveTo(cx+16,cy+10+bob); bctx.lineTo(cx+35,cy+36+bob); bctx.stroke();
+  }
+
+  // Hull
+  bctx.fillStyle='#1e3a5f'; bctx.strokeStyle='#00d4aa'; bctx.lineWidth=1.8;
+  bctx.beginPath();
+  bctx.moveTo(cx-52,cy-3+bob); bctx.lineTo(cx+52,cy-3+bob);
+  bctx.lineTo(cx+36,cy+15+bob); bctx.lineTo(cx-36,cy+15+bob);
+  bctx.closePath(); bctx.fill(); bctx.stroke();
+
+  // Deck
+  bctx.fillStyle='#162844'; bctx.strokeStyle='#1e3a5f'; bctx.lineWidth=1;
+  bctx.fillRect(cx-38,cy-14+bob,76,11); bctx.strokeRect(cx-38,cy-14+bob,76,11);
+
+  // Cabin
+  bctx.fillStyle='#0f1e35'; bctx.strokeStyle='#00d4aa'; bctx.lineWidth=1.5;
+  bctx.fillRect(cx-18,cy-30+bob,36,16); bctx.strokeRect(cx-18,cy-30+bob,36,16);
+
+  // Windows
+  bctx.fillStyle='rgba(0,212,170,0.35)';
+  bctx.fillRect(cx-14,cy-27+bob,10,9);
+  bctx.fillRect(cx+4,cy-27+bob,10,9);
+
+  // Front Camera LED (RED blink when alert, else teal)
+  const camLedColor = alertMode ? '#ff4757' : (isDetecting ? '#00ff88' : '#003322');
+  const camLedGlow = alertMode ? 'rgba(255,71,87,0.8)' : 'rgba(0,255,136,0.5)';
+  if (alertMode) {
+    bctx.shadowColor = '#ff4757'; bctx.shadowBlur = 12;
+  }
+  bctx.fillStyle = '#00d4aa';
+  bctx.beginPath(); bctx.arc(cx+44,cy-5+bob,5,0,Math.PI*2); bctx.fill();
+  bctx.fillStyle = camLedColor;
+  bctx.beginPath(); bctx.arc(cx+44,cy-5+bob,2.5,0,Math.PI*2); bctx.fill();
+  bctx.shadowBlur = 0;
+
+  // Mast
+  bctx.strokeStyle='#6b8fa8'; bctx.lineWidth=2;
+  bctx.beginPath(); bctx.moveTo(cx,cy-30+bob); bctx.lineTo(cx,cy-64+bob); bctx.stroke();
+
+  // Flag
+  const flagColors={docked:'#6b8fa8',navigating:'#1e90ff',arrived:'#f5a623',collecting:'#00d4aa',coverage:'#2ed573',returning_home:'#f5a623'};
+  const fc=alertMode?'#ff4757':(flagColors[status]||'#6b8fa8');
+  const fw=Math.sin(boatFrame*0.1)*9;
+  bctx.fillStyle=fc;
+  bctx.beginPath();
+  bctx.moveTo(cx,cy-64+bob); bctx.lineTo(cx+20+fw,cy-57+bob); bctx.lineTo(cx,cy-50+bob);
+  bctx.closePath(); bctx.fill();
+
+  // Load bar
+  const pct=Math.min(wcount/maxw,1);
+  bctx.fillStyle=pct>.8?'#ff4757':pct>.5?'#f5a623':'#00d4aa';
+  bctx.fillRect(cx-30,cy-12+bob,13,7);
+  bctx.fillStyle='rgba(0,0,0,.5)'; bctx.fillRect(cx-30,cy-12+bob,13,7*(1-pct));
+  bctx.strokeStyle='#060e1a'; bctx.lineWidth=.8; bctx.strokeRect(cx-30,cy-12+bob,13,7);
+
+  // Compass
+  const ccx=W-36,ccy=32,cr=24;
+  bctx.strokeStyle='rgba(0,212,170,0.2)'; bctx.lineWidth=1;
+  bctx.beginPath(); bctx.arc(ccx,ccy,cr,0,Math.PI*2); bctx.stroke();
+  const hr=(heading-90)*Math.PI/180;
+  bctx.strokeStyle='#00d4aa'; bctx.lineWidth=2;
+  bctx.beginPath(); bctx.moveTo(ccx,ccy); bctx.lineTo(ccx+Math.cos(hr)*cr*.75,ccy+Math.sin(hr)*cr*.75); bctx.stroke();
+  bctx.fillStyle='#6b8fa8'; bctx.font='8px DM Mono,monospace';
+  bctx.fillText('N',ccx-3,ccy-cr+8); bctx.fillText('S',ccx-3,ccy+cr-2);
+  bctx.fillText('W',ccx-cr+2,ccy+3); bctx.fillText('E',ccx+cr-9,ccy+3);
+
+  // Status strip
+  bctx.fillStyle='rgba(6,14,26,0.85)';
+  bctx.fillRect(0,H-20,W,20);
+  const stmap={docked:'⚓ DOCKED',navigating:'🚢 NAVIGATING',arrived:'⚓ ARRIVED',collecting:'♻ DETECTING',coverage:'🗺 COVERAGE',returning_home:'↩ RETURNING'};
+  bctx.fillStyle=alertMode?'#ff4757':(fc==='#6b8fa8'?'#6b8fa8':fc);
+  bctx.font='10px DM Mono,monospace';
+  bctx.fillText(alertMode?'🚨 MAX LOAD — RETURNING HOME':(stmap[status]||status.toUpperCase()),8,H-7);
+  bctx.fillStyle='#6b8fa8'; bctx.fillText(`${Math.round(heading)}°`,W-34,H-7);
+
+  boatFrame++;
+}
+
+// Animate
+let animAlertMode = false;
+(function animBoat(){
+  requestAnimationFrame(animBoat);
+  drawBoatSide(lastBoatStatus||'docked', lastHeading, 0, 50, animAlertMode);
+})();
+
+// ========================
+// NAV LOG
+// ========================
+const logEl = document.getElementById('navLog');
+function addLog(msg, isNew=true){
+  const t=new Date().toLocaleTimeString();
+  const d=document.createElement('div');
+  d.className='log-line'+(isNew?' new':'');
+  d.textContent=`[${t}] ${msg}`;
+  logEl.appendChild(d);
+  logEl.scrollTop=logEl.scrollHeight;
+  if(logEl.children.length>50) logEl.removeChild(logEl.children[0]);
+  if(isNew) setTimeout(()=>d.classList.remove('new'),3000);
+}
+
+// ========================
+// CAMERA UI
+// ========================
+function updateCameraUI(){
+  const v=document.querySelector('input[name="cam"]:checked').value;
+  document.getElementById('ipInput').style.display=v==='ip'?'block':'none';
+  document.getElementById('videoUpload').style.display=v==='video'?'block':'none';
+}
+function updateSimCameraUI(){
+  const v=document.querySelector('input[name="simcam"]:checked').value;
+  document.getElementById('simIpInput').style.display=v==='ip'?'flex':'none';
+  document.getElementById('simVideoUpload').style.display=v==='video'?'flex':'none';
+}
+function fileSelected(i){ if(i.files[0]) document.getElementById('fileLabel').textContent='✓ '+i.files[0].name; }
+function simFileSelected(i){ if(i.files[0]) document.getElementById('simFileLabel').textContent='✓ '+i.files[0].name; }
+
+// ========================
+// ALERT
+// ========================
+let alertTimer;
+function showAlert(msg,type){
+  const el=document.getElementById('alertBox');
+  el.textContent=msg; el.className='alert-box show '+type;
+  clearTimeout(alertTimer);
+  alertTimer=setTimeout(()=>el.classList.remove('show'),5000);
+}
+
+// ========================
+// AUDIO
+// ========================
+async function loadAudioStatus(){
+  try {
+    const res=await fetch('/api/audio_status');
+    const d=await res.json();
+    if(d.has_audio){
+      document.getElementById('currentAudioName').textContent=d.filename;
+      document.getElementById('currentAudioName').style.color='var(--teal)';
+      document.getElementById('testAudioBtn').style.display='inline-flex';
+      document.getElementById('removeAudioBtn').style.display='inline-flex';
+      document.getElementById('audioPreviewWrap').style.display='block';
+      document.getElementById('audioPreview').src='/api/audio?t='+Date.now();
+      alertAudioSrc='/api/audio';
+    } else {
+      document.getElementById('currentAudioName').textContent='No audio uploaded';
+      document.getElementById('currentAudioName').style.color='var(--muted)';
+      document.getElementById('testAudioBtn').style.display='none';
+      document.getElementById('removeAudioBtn').style.display='none';
+      document.getElementById('audioPreviewWrap').style.display='none';
+      alertAudioSrc=null;
+    }
+  } catch(e){}
+}
+
+async function uploadAudio(input){
+  if(!input.files[0]) return;
+  const fd=new FormData(); fd.append('audio',input.files[0]);
+  document.getElementById('audioDropLabel').textContent='Uploading...';
+  try {
+    const res=await fetch('/api/upload_audio',{method:'POST',body:fd});
+    const d=await res.json();
+    if(d.error){
+      showAudioAlert(d.error,'error');
+      document.getElementById('audioDropLabel').textContent='Drop audio file here or click to upload';
+      return;
+    }
+    document.getElementById('audioDropLabel').textContent='Drop audio file here or click to upload';
+    showAudioAlert('✅ Audio uploaded successfully: '+input.files[0].name,'info');
+    await loadAudioStatus();
+  } catch(e){
+    showAudioAlert('Upload failed','error');
+    document.getElementById('audioDropLabel').textContent='Drop audio file here or click to upload';
+  }
+}
+
+function showAudioAlert(msg,type){
+  const el=document.getElementById('audioAlertBox');
+  el.textContent=msg; el.className='alert-box show '+type;
+  setTimeout(()=>el.classList.remove('show'),4000);
+}
+
+function testAudio(){
+  const a=document.getElementById('alertAudio');
+  a.src='/api/audio?t='+Date.now();
+  a.play().catch(e=>showAudioAlert('Cannot play audio: '+e.message,'error'));
+}
+
+function removeAudioInfo(){
+  showAudioAlert('To remove: delete the alert_audio.* file from your project folder and restart.','warn');
+}
+
+function playAlertAudio(){
+  if(!alertAudioSrc) return;
+  const a=document.getElementById('alertAudio');
+  a.src=alertAudioSrc+'?t='+Date.now();
+  a.loop=true;
+  a.play().catch(()=>{});
+}
+
+function stopAlertAudio(){
+  const a=document.getElementById('alertAudio');
+  a.pause(); a.currentTime=0; a.loop=false;
+}
+
+// ========================
+// MODALS
+// ========================
+function showArrivalModal(lat,lon){
+  document.getElementById('modalCoords').textContent=`LAT: ${lat.toFixed(6)}  |  LON: ${lon.toFixed(6)}`;
+  document.getElementById('arrivalModal').classList.add('show');
+  fetch('/api/mark_arrival_notified',{method:'POST'});
+}
+function closeArrivalModal(){ document.getElementById('arrivalModal').classList.remove('show'); }
+function onArrivalStartDetection(){ closeArrivalModal(); startDetection(); }
+async function onArrivalStartCoverage(){ closeArrivalModal(); await startCoverage(); }
+
+function showMaxLoadModal(wc,weight){
+  document.getElementById('maxLoadInfo').textContent=`${wc} items (${weight}kg) — Boat returning to home port`;
+  document.getElementById('maxLoadModal').classList.add('show');
+  playAlertAudio();
+  animAlertMode=true;
+  document.getElementById('boatAlertLabel').style.display='block';
+}
+function closeMaxLoadModal(){
+  document.getElementById('maxLoadModal').classList.remove('show');
+  stopAlertAudio();
+  animAlertMode=false;
+  document.getElementById('boatAlertLabel').style.display='none';
+}
+
+// ========================
+// DEPLOY BOAT
+// ========================
+async function sendBoatToLocation(){
+  if(!homeSet){ showAlert('Set home port first by clicking on the map','warn'); return; }
+  if(!selLat){ showAlert('Draw survey area first','warn'); return; }
+  const res=await fetch('/api/navigate',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({latitude:selLat,longitude:selLon,radius:selRadius})
+  });
+  const d=await res.json();
+  if(d.error){ showAlert(d.error,'error'); return; }
+  maxReachedAlerted=false;
+  showAlert(`🚢 Boat deployed from home → ${selLat.toFixed(4)}, ${selLon.toFixed(4)}`,'nav-alert');
+  addLog(`Boat deployed → Target: ${selLat.toFixed(5)}, ${selLon.toFixed(5)}`);
+  addLog(`Coverage: ${d.coverage_waypoints} waypoints`);
+}
+
+// ========================
+// COVERAGE
+// ========================
+async function startCoverage(){
+  const res=await fetch('/api/start_coverage',{method:'POST'});
+  const d=await res.json();
+  if(d.error){ showAlert(d.error,'warn'); return; }
+  addLog('Coverage sweep started');
+  showAlert('🗺 Coverage sweep started','info');
+}
+
+// ========================
+// DETECTION
+// ========================
+async function startDetection(){
+  const camOpt=document.querySelector('input[name="cam"]:checked').value;
+  await _doStart(camOpt, document.getElementById('cameraUrl').value, document.getElementById('videoFile').files[0]);
+}
+async function startDetectionFromSim(){
+  const camOpt=document.querySelector('input[name="simcam"]:checked').value;
+  await _doStart(camOpt, document.getElementById('simCameraUrl').value, document.getElementById('simVideoFile').files[0]);
+}
+async function _doStart(camOpt,camUrl,videoFile){
+  if(camOpt==='video'){
+    if(!videoFile){ showAlert('Select a video file first','warn'); return; }
+    const fd=new FormData(); fd.append('video',videoFile);
+    const res=await fetch('/api/upload_video',{method:'POST',body:fd});
+    const d=await res.json();
+    if(d.error){ showAlert(d.error,'error'); return; }
+  } else {
+    const res=await fetch('/api/start_detection',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({camera_option:camOpt,camera_url:camUrl})
+    });
+    const d=await res.json();
+    if(d.error){ showAlert(d.error,'error'); return; }
+  }
+  isDetecting=true;
+  maxReachedAlerted=false;
+  showAlert('Detection started — front camera active','info');
+  addLog('Detection started');
+}
+async function stopDetection(){
+  await fetch('/api/stop_detection',{method:'POST'});
+  isDetecting=false;
+  showAlert('Detection stopped','warn');
+  addLog('Detection stopped');
+}
+async function returnHome(){
+  await fetch('/api/return_home',{method:'POST'});
+  showAlert('⬅ Returning to home port','warn');
+  addLog('Return home command issued');
+}
+
+// ========================
+// MAIN POLL
+// ========================
+let prevBs=null;
+
+async function mainPoll(){
+  try {
+    const [bs,ds]=await Promise.all([
+      fetch('/api/boat_state').then(r=>r.json()),
+      fetch('/api/state').then(r=>r.json())
+    ]);
+
+    lastBoatStatus=bs.status;
+    lastHeading=bs.heading;
+
+    // NAV DOT
+    const dot=document.getElementById('navDot');
+    const navTxt=document.getElementById('navStatusText');
+    const stlabels={docked:'Docked',navigating:'Navigating',arrived:'Arrived',collecting:'Detecting',coverage:'Coverage',returning_home:'Returning'};
+    navTxt.textContent=stlabels[bs.status]||bs.status;
+    dot.className='pulse-dot '+(
+      bs.status==='navigating'||bs.status==='returning_home'?'navigating':
+      bs.status==='coverage'||bs.status==='collecting'?'active':
+      ds.status==='max_reached'?'alert':''
+    );
+
+    // DASHBOARD METRICS
+    document.getElementById('wasteCount').textContent=ds.waste_count;
+    document.getElementById('wasteWeight').textContent=ds.weight.toFixed(2);
+    const pct=Math.min((ds.waste_count/ds.max_waste)*100,100);
+    ['countProg','weightProg'].forEach(id=>{
+      document.getElementById(id).style.width=pct+'%';
+      document.getElementById(id).className='prog-bar'+(pct>=80?' danger':'');
+    });
+    document.getElementById('dashStatusBadge').className='sbadge '+(bs.status||'docked');
+    document.getElementById('dashStatusLabel').textContent=stlabels[bs.status]||bs.status;
+
+    // SIM STATUS
+    document.getElementById('simStatusBadge').className='sbadge '+(bs.status||'docked');
+    document.getElementById('simStatusLabel').textContent=stlabels[bs.status]||bs.status;
+    document.getElementById('camStatusBadge').className='sbadge '+(ds.detecting?'collecting':'docked');
+    document.getElementById('camStatusLabel').textContent=ds.detecting?'LIVE':'Offline';
+    document.getElementById('btnStartCoverage').style.display=bs.status==='arrived'?'inline-flex':'none';
+
+    // HUD
+    document.getElementById('hudPos').textContent=`${bs.current_lat.toFixed(4)}, ${bs.current_lon.toFixed(4)}`;
+    document.getElementById('hudHeading').textContent=Math.round(bs.heading)+'°';
+    document.getElementById('hudCoverage').textContent=bs.coverage_pct+'%';
+    document.getElementById('hudWaste').textContent=ds.waste_count;
+    document.getElementById('hudWeight').textContent=ds.weight.toFixed(2)+' kg';
+
+    // SIM INFO
+    document.getElementById('simInfoStatus').textContent=(bs.status||'docked').toUpperCase();
+    document.getElementById('simInfoSpeed').textContent=['navigating','returning_home','coverage'].includes(bs.status)?'8.5 kn':'0 kn';
+    document.getElementById('simInfoWp').textContent=bs.coverage_total>0?`${bs.coverage_index}/${bs.coverage_total}`:'—';
+    document.getElementById('simInfoCov').textContent=bs.coverage_pct+'%';
+    document.getElementById('simCovProg').style.width=bs.coverage_pct+'%';
+    document.getElementById('simCovPct').textContent=bs.coverage_pct;
+
+    // BOAT MARKER
+    const alertMode=ds.status==='max_reached';
+    boatMarker.setLatLng([bs.current_lat,bs.current_lon]);
+    boatMarker.setIcon(makeBoatIcon(bs.heading, alertMode));
+
+    // HOME MARKER ON SIM MAP
+    if(bs.home_lat && bs.home_lon){
+      if(!homeMarker){
+        homeMarker=L.marker([bs.home_lat,bs.home_lon],{icon:homeIconSvg}).bindTooltip('🏠 Home Port').addTo(simTopMap);
+      } else homeMarker.setLatLng([bs.home_lat,bs.home_lon]);
+    }
+
+    // TARGET + CIRCLE
+    if(bs.target_lat && bs.status!=='docked'){
+      if(!targetMarker){
+        targetMarker=L.marker([bs.target_lat,bs.target_lon],{icon:targetIconSvg}).bindTooltip('🎯 Target').addTo(simTopMap);
+      }
+      if(!surveyCircle && bs.survey_radius){
+        surveyCircle=L.circle([bs.survey_center_lat,bs.survey_center_lon],{
+          radius:bs.survey_radius,color:'#00d4aa',fillColor:'#00d4aa',fillOpacity:.06,weight:1.5,dashArray:'6,6'
+        }).addTo(simTopMap);
+      }
+    } else if(bs.status==='docked'){
+      if(targetMarker){simTopMap.removeLayer(targetMarker);targetMarker=null;}
+      if(surveyCircle){simTopMap.removeLayer(surveyCircle);surveyCircle=null;}
+      if(coveragePathPoly){simTopMap.removeLayer(coveragePathPoly);coveragePathPoly=null;}
+      coveragePathDrawn=false;
+    }
+
+    // COVERAGE PATH
+    if(bs.coverage_path&&bs.coverage_path.length>1&&!coveragePathDrawn&&bs.status!=='docked'){
+      if(coveragePathPoly) simTopMap.removeLayer(coveragePathPoly);
+      coveragePathPoly=L.polyline(bs.coverage_path.map(w=>[w.lat,w.lon]),{
+        color:'#2ed573',weight:1,opacity:.3,dashArray:'3,8'
+      }).addTo(simTopMap);
+      coveragePathDrawn=true;
+    }
+
+    // TRAIL
+    if(bs.trail&&bs.trail.length>1){
+      const pts=bs.trail.map(t=>[t.lat,t.lon]);
+      if(!trailPoly) trailPoly=L.polyline(pts,{color:'#00d4aa',weight:2,opacity:.6}).addTo(simTopMap);
+      else trailPoly.setLatLngs(pts);
+    }
+
+    // MAP PAN + ZOOM — zoom in ONLY when detecting, zoom out when not
+    const isMoving=['navigating','returning_home','coverage'].includes(bs.status);
+    if(isMoving){
+      const targetZoom=ds.detecting?17:15;
+      const curZoom=simTopMap.getZoom();
+      if(Math.abs(curZoom-targetZoom)>1){
+        simTopMap.setView([bs.current_lat,bs.current_lon],targetZoom,{animate:true,duration:1});
+      } else {
+        simTopMap.panTo([bs.current_lat,bs.current_lon],{animate:true,duration:0.4});
+      }
+    } else if(bs.status==='arrived' && bs.survey_center_lat){
+      simTopMap.setView([bs.survey_center_lat,bs.survey_center_lon],15,{animate:true,duration:1});
+    }
+
+    // CAMERA FEED
+    updateCamFeed(ds.frame,ds.detecting,'simCamImg','simCamPlaceholder','simCamBody');
+
+    // ARRIVAL
+    if(bs.status==='arrived'&&!bs.arrival_notified){
+      if(lastBoatSt!=='arrived'){
+        showArrivalModal(bs.current_lat,bs.current_lon);
+        addLog(`✅ ARRIVED: ${bs.current_lat.toFixed(5)}, ${bs.current_lon.toFixed(5)}`);
+        showAlert('⚓ Boat arrived!','info');
+      }
+    }
+
+    // MAX LOAD ALERT + AUDIO
+    if(ds.max_reached&&!maxReachedAlerted){
+      maxReachedAlerted=true;
+      showMaxLoadModal(ds.waste_count,ds.weight);
+      addLog('🚨 MAX LOAD REACHED — returning home');
+      showAlert('🚨 Max load reached — audio alert playing','error');
+    }
+    if(!ds.max_reached&&maxReachedAlerted&&bs.status==='docked'){
+      maxReachedAlerted=false;
+      animAlertMode=false;
+    }
+
+    // STATUS CHANGE LOGGING
+    if(bs.status!==lastBoatSt){
+      const msgs={navigating:'🚢 Navigating to survey area',arrived:'⚓ Arrived at destination',
+        coverage:'🗺 Coverage sweep started',collecting:'♻ Waste detection active',
+        returning_home:'↩ Returning to home port',docked:'🏠 Docked at home port'};
+      if(msgs[bs.status]) addLog(msgs[bs.status]);
+      lastBoatSt=bs.status;
+    }
+
+    isDetecting=ds.detecting;
+
+  } catch(e){ console.error(e); }
+  setTimeout(mainPoll,200);
+}
+
+function updateCamFeed(frame,detecting,imgId,overlayId,wrapperId){
+  const img=document.getElementById(imgId);
+  const ov=document.getElementById(overlayId);
+  const wrap=document.getElementById(wrapperId);
+  if(frame){
+    img.src='data:image/jpeg;base64,'+frame;
+    img.style.display='block';
+    ov.style.display='none';
+    let sl=wrap.querySelector('.scan-line');
+    if(detecting&&!sl){ sl=document.createElement('div'); sl.className='scan-line'; wrap.appendChild(sl); }
+    else if(!detecting&&sl){ sl.remove(); }
+  } else {
+    if(!detecting){ img.style.display='none'; ov.style.display='flex'; }
+  }
+}
+
+// Start polling + load audio status
+mainPoll();
+loadAudioStatus();
+
+// ========================
+// RECORDS
+// ========================
+let recMapInst=null;
+async function loadRecords(){
+  const res=await fetch('/api/records');
+  const records=await res.json();
+  const el=document.getElementById('recordsContent');
+  if(!records.length){ el.innerHTML='<div class="empty-state"><div class="ico">📋</div><p>No records yet</p></div>'; return; }
+  let html=`<div class="card" style="overflow:auto"><table class="dtable"><thead><tr>
+    <th>ID</th><th>Latitude</th><th>Longitude</th><th>Radius</th><th>Waste</th><th>Weight</th><th></th>
+  </tr></thead><tbody>`;
+  records.forEach(r=>{
+    html+=`<tr><td>#${r.id}</td><td>${r.latitude?r.latitude.toFixed(5):'—'}</td><td>${r.longitude?r.longitude.toFixed(5):'—'}</td>
+    <td>${r.radius?Math.round(r.radius)+'m':'—'}</td><td><b style="color:var(--teal)">${r.waste_count}</b></td><td>${r.weight}kg</td>
+    <td><button class="view-btn" onclick="viewRecord(${r.id},${r.latitude},${r.longitude},${r.radius},${r.waste_count},${r.weight})">Map</button></td></tr>`;
+  });
+  html+='</tbody></table></div>';
+  el.innerHTML=html;
+}
+function viewRecord(id,lat,lon,radius,count,weight){
+  document.getElementById('recordsTable').style.display='none';
+  document.getElementById('recordDetail').style.display='block';
+  document.getElementById('recordDetailTitle').textContent=`Record #${id}`;
+  document.getElementById('recordDetailInfo').innerHTML=`<div class="coord-pill">
+    <span>LAT: <b>${lat?lat.toFixed(6):'—'}</b></span><span>LON: <b>${lon?lon.toFixed(6):'—'}</b></span>
+    <span>RADIUS: <b>${Math.round(radius||0)}m</b></span><span>WASTE: <b>${count}</b></span><span>WEIGHT: <b>${weight}kg</b></span></div>`;
+  if(recMapInst){recMapInst.remove();recMapInst=null;}
+  setTimeout(()=>{
+    if(!lat||!lon) return;
+    recMapInst=L.map('recordMap').setView([lat,lon],16);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap © CARTO',subdomains:'abcd',maxZoom:19}).addTo(recMapInst);
+    L.marker([lat,lon]).bindPopup(`Record #${id}: ${count} items, ${weight}kg`).addTo(recMapInst).openPopup();
+    if(radius) L.circle([lat,lon],{radius,color:'#00d4aa',fillColor:'#00d4aa',fillOpacity:.12,weight:2}).addTo(recMapInst);
+  },100);
+}
+function showRecordsTable(){
+  document.getElementById('recordsTable').style.display='block';
+  document.getElementById('recordDetail').style.display='none';
+  if(recMapInst){recMapInst.remove();recMapInst=null;}
+}
+</script>
+</body>
+</html>
